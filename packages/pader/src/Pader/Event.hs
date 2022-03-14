@@ -48,7 +48,7 @@ import System.Mem.Weak
 
 
 {-
-
+:set -XScopedTypeVariables
 import System.Mem
 
 (e,t::Trigger String)<-newEvent
@@ -87,10 +87,20 @@ instance KeepAlive (Trigger a) where
     watchdogs (Trigger_ (wd::Watchdog) (l::Leash) (sem::MVar ()) (iom::(IOMap (TeleBoxSender a)))) = pure wd
 
 instance IsAlive (Trigger a) where
-    isAlive (Trigger_ (wd::Watchdog) (l::Leash) (sem::MVar ()) (iom::(IOMap (TeleBoxSender a)))) = (&&) <$> isAlive wd <*> isAlive l
+    isAlive (Trigger_ (wd::Watchdog) (l::Leash) (sem::MVar ()) (iom::(IOMap (TeleBoxSender a)))) = --(&&) <$> isAlive wd <*> isAlive l
+        do
+            a <- isAlive l
+            b <- isAlive wd
+            when (not a && b) $ kill wd
+            return (a && b)
 instance IsAlive (Event a) where
     isAlive Never_ = return False
-    isAlive (Registrable_ (wd::Watchdog) (l::Leash) (iom::(IOMap (TeleBoxSender x))) xa) = (&&) <$> isAlive wd <*> isAlive l
+    isAlive (Registrable_ (wd::Watchdog) (l::Leash) (iom::(IOMap (TeleBoxSender x))) xa) = --(&&) <$> isAlive wd <*> isAlive l
+        do
+            a <- isAlive l
+            b <- isAlive wd
+            when (not a && b) $ kill wd
+            return (a && b)
 
 
 
@@ -143,7 +153,7 @@ newEvent = do
     ewd <- spawnWatchdog -- watching the event
     let !e = Registrable_ ewd (leash twd) m Just
     sem <- newMVar ()
-    let !t = Trigger_ (twd::Watchdog) (leash ewd) sem m -- TODO: cleanup when trigger is gone.
+    let !t = Trigger_ (twd::Watchdog) (leash ewd) sem m
     return (e,t)
 
 
