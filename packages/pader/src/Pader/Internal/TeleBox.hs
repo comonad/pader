@@ -31,7 +31,6 @@ import           Data.Function (fix)
 import           Data.IORef
 import           Data.IntMap.Strict as IntMap
 import           Data.Maybe
-import           Data.StateVar as StateVar
 import           GHC.Base (sconcat,stimes,NonEmpty(..))
 
 import           System.IO.Unsafe (unsafePerformIO)
@@ -77,8 +76,8 @@ createTeleBox :: forall a. IO (TeleBoxSender a,TeleBoxReceiver a)
 createTeleBox = do
     !wds<-spawnWatchdog :: IO Watchdog
     !wdr<-spawnWatchdog :: IO Watchdog
-    wds $= pure wdr
-    wdr $= pure wds
+    wds `protectsAlso` wdr
+    wdr `protectsAlso` wds
     !sb<-newEmptySendBox :: IO (SendBox (Maybe a))
     !ms <- newMVar $ Just sb
     !mr <- newMVar $ Just sb

@@ -14,7 +14,7 @@ import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.Fixed as Fixed
 
 import Pader.Behavior(Behavior(..),Behavior(sample),attach)
-import Pader.Event(Event(..),trigger,newEventWithWatchdogs,onEvent)
+import Pader.Event(Event(..),newEvent,trigger,shouldAlsoKeepAlive,onEvent)
 import Pader.Util.Watchdog(watchdogs,spawnWatchdog,onCleanup,leash,keepsAlive)
 
 import System.IO.Unsafe (unsafePerformIO)
@@ -64,7 +64,8 @@ mapActor f !ev = unsafePerformIO $! do
     onCleanup (leash chanWriter_dog1) $ unreg_inserter >> cleanup_chan
     onCleanup (leash chanWriter_dog2) $ unreg_inserter >> cleanup_chan
 
-    (!ev',!t') <- newEventWithWatchdogs $ watchdogs ev
+    (!ev',!t') <- newEvent
+    ev' `shouldAlsoKeepAlive` ev
     ev `keepsAlive` chanWriter_dog1
     ev' `keepsAlive` chanWriter_dog2
 

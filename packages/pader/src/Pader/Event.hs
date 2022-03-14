@@ -17,10 +17,11 @@ module Pader.Event (
     Event,newEvent,onEvent,onEventOnce,
     Trigger,trigger,
     Listener(..),listenOnEvent,
-    mapAccumEvent,onEventWhile,neverEvent,newEventWithWatchdogs,
-    switch,mapMaybeEvent,filterEvent,
-    UnregisterIO, OK
---    alsoKeepsAlive
+    mapAccumEvent,onEventWhile,neverEvent,
+    Pader.Event.union,switch,mapMaybeEvent,filterEvent,sequenceEvent,
+    takeEvent,dropEvent,copyEvent,pipeEvent,
+    UnregisterIO, OK,
+    shouldAlsoKeepAlive,keepAlive,keptAlive
 ) where
 
 
@@ -38,7 +39,6 @@ import Data.Foldable
 import Data.IORef
 import Data.IntMap.Strict as IntMap
 import Data.Maybe
-import Data.StateVar as StateVar
 
 import GHC.Base (sconcat,stimes,NonEmpty(..))
 
@@ -107,18 +107,18 @@ data Synchronization = Async | Sync
 triggerD :: Distribute -> Trigger a -> a -> IO OK -- returns "still valid?"
 triggerD dis trig@(Trigger_ (wd::Watchdog) (l::Leash) (sem::MVar()) (iom::(IOMap (TeleBoxSender a)))) a = do
     bracket_ (takeMVar sem) (putMVar sem ()) $ do
-        b<-isAlive trig
+        b <- isAlive trig
         if b
             then do
                 boxes <- iterateIOMap iom
                 case dis of
                     Sequential -> do
-                        traverse_ (join . flip send a) boxes
+                        traverse_ (join . (`send` a)) boxes
                     Parallel Sync -> do
-                        syncs<-traverse (flip send a) boxes
+                        syncs<-traverse (`send` a) boxes
                         sequence_ syncs
                     Parallel Async -> do
-                        traverse_ (flip send_ a) boxes
+                        traverse_ (`send_` a) boxes
                 keepAlive trig
             else do
                 clearIOMap iom
@@ -130,23 +130,17 @@ trigger = triggerD $ Parallel Sync
 neverEvent :: Event a
 neverEvent = Never_
 
-newEvent :: IO (Event a,Trigger a)
-newEvent = newEventWithWatchdogs mempty
 
--- | convenience function.
+-- | Events need to be kept alive either by those Events they are wired to trigger
 --
--- > newEventWithWatchdogs toProtect = do
--- >    (e,t) <- newEvent
--- >    e `alsoKeepsAlive` toProtect
--- >    return (e,t)
-
-newEventWithWatchdogs :: Bag Watchdog -> IO (Event a,Trigger a)
-newEventWithWatchdogs wds = do
+-- > created_event `shouldAlsoKeepAlive` event_that_triggers_it
+--
+-- or by `keepAlive`, `keptAlive`, see module Watchdog.
+newEvent :: IO (Event a,Trigger a)
+newEvent = do
     m <- newIOMap
-    twd<-spawnWatchdog
-    ewd<-spawnWatchdog
-    twd $= mempty
-    ewd $= wds
+    twd <- spawnWatchdog -- watching the trigger
+    ewd <- spawnWatchdog -- watching the event
     let !e = Registrable_ ewd (leash twd) m Just
     sem <- newMVar ()
     let !t = Trigger_ (twd::Watchdog) (leash ewd) sem m -- TODO: cleanup when trigger is gone.
@@ -154,10 +148,10 @@ newEventWithWatchdogs wds = do
 
 
 
-newtype Listener a = Listener {runListener :: (a -> IO (Maybe (Listener a)))}
+newtype Listener a = Listener {runListener :: a -> IO (Maybe (Listener a))}
 feedListener :: Listener a -> [a] -> IO (Maybe (Listener a))
 feedListener prog [] = return $ Just prog
-feedListener (Listener f) (a:as) = f a >>= maybe (return Nothing) (feedListener `flip` as)
+feedListener (Listener f) (a:as) = f a >>= maybe (return Nothing) (`feedListener` as)
 
 
 listenOnSendBox :: forall x a . TeleBoxReceiver x -> (x -> Maybe a) -> Listener a -> IO ()
@@ -173,7 +167,7 @@ listenOnSendBox box fa li@(Listener f) = do
 listenOnEvent :: Event a -> Listener a -> IO (UnregisterIO)
 listenOnEvent Never_ _ = return (return ())
 listenOnEvent e@(Registrable_ _ _ (iom::(IOMap (TeleBoxSender x))) fa) prog = do
-    b<-isAlive e
+    b <- isAlive e
     if b
     then do
         (tbs,tbr)<-createTeleBox :: IO (TeleBoxSender x,TeleBoxReceiver x)
@@ -206,7 +200,8 @@ onEventWhile e f = listenOnEvent e l
 
 sequenceEvent :: Event (IO a) -> IO (Event a)
 sequenceEvent ev = do
-    (!e,!t) <- newEventWithWatchdogs $ watchdogs ev
+    (!e,!t) <- newEvent
+    e `shouldAlsoKeepAlive` ev
     _ <- onEventWhile ev $ \ioa -> do
         a<-ioa
         trigger t a
@@ -225,16 +220,17 @@ takeEvent :: forall a. Event a -> Int -> IO (Event a)
 takeEvent !ev !n
     | n<1 = return neverEvent
     | otherwise = do
-        wd<-spawnWatchdog
-        wd $= watchdogs ev
-        (!ev',!t') <- newEventWithWatchdogs $ pure wd
+        (!ev',!t') <- newEvent
+        wd <- spawnWatchdog
+        ev' `shouldAlsoKeepAlive` wd
+        wd `protectsOnly` ev
         let copy :: Int -> Listener a
             copy n = Listener $ \ !a -> do
                 ok<-trigger t' a
                 if ok && (n>1) then
                     return $ Just (copy $! n-1)
                 else do
-                    wd $= mempty
+                    wd `protectsOnly` ()
                     return Nothing
         _ <- listenOnEvent ev (copy n) :: IO (UnregisterIO)
         return ev'
@@ -242,7 +238,8 @@ dropEvent :: forall a. Event a -> Int -> IO (Event a)
 dropEvent !ev !n
     | n<1 = return ev
     | otherwise = do
-        (!ev',!t') <- newEventWithWatchdogs $ watchdogs ev
+        (!ev',!t') <- newEvent
+        ev' `shouldAlsoKeepAlive` ev
         let copyForever :: Listener a
             copyForever = Listener $ \ !a -> do
                 ok<-trigger t' a
@@ -254,7 +251,7 @@ dropEvent !ev !n
         _ <- listenOnEvent ev (copyAfter n) :: IO (UnregisterIO)
         return ev'
 
--- does not run "keepAlive e"
+-- | does not run `keepAlive e`
 pipeEvent :: Event a -> Trigger a -> IO ()
 pipeEvent !ev !t = do
         --_ <- onEventWhile ev (\msg->trigger t msg `finally` keepAlive ev) :: IO (UnregisterIO)
@@ -263,13 +260,14 @@ pipeEvent !ev !t = do
 
 copyEvent :: Event a -> Event a
 copyEvent !ev = unsafePerformIO $! do
-        (!ev',!t') <- newEventWithWatchdogs $ watchdogs ev
+        (!ev',!t') <- newEvent
+        ev' `shouldAlsoKeepAlive` ev
         pipeEvent ev t'
         return ev'
 
 mapMaybeEvent :: (a->Maybe b) -> Event a -> Event b
 mapMaybeEvent f Never_ = Never_
-mapMaybeEvent f (Registrable_ wd l m xa) = Registrable_ wd l m $! (>>= f) . xa
+mapMaybeEvent f (Registrable_ wd l m xa) = Registrable_ wd l m $! f <=< xa
 
 filterEvent :: (a->Bool) -> Event a -> Event a
 filterEvent p = mapMaybeEvent (\a->if p a then Just a else Nothing)
@@ -284,7 +282,8 @@ instance Semigroup (Event a) where
     stimes 0 _ = neverEvent
     stimes 1 ev = ev
     stimes n ev = unsafePerformIO $! do
-        (!e,!t)<-newEventWithWatchdogs $! watchdogs ev
+        (!e,!t)<-newEvent
+        e `shouldAlsoKeepAlive` ev
         let tr 1 a = trigger t a
             tr n a = do
                 b<-trigger t a
@@ -297,8 +296,9 @@ instance Monoid (Event a) where
     mconcat [] = mempty
     mconcat [a] = a
     mconcat as = unsafePerformIO $! do
-        (!e,!t)<-newEventWithWatchdogs $! mconcat $ fmap watchdogs as
-        traverse_ (flip pipeEvent t) as
+        (!e,!t)<-newEvent
+        e `shouldAlsoKeepAlive` as
+        traverse_ (`pipeEvent` t) as
         return e
 
 
@@ -306,7 +306,8 @@ instance Monoid (Event a) where
 -- | mapAccumEvent needs to run in IO: mapAccumEvent could collect the history of events, so we need to know when it was started.
 mapAccumEvent :: s -> (a->s->(b,s)) -> Event a -> IO (Event b)
 mapAccumEvent !s0 !f !evA = do
-        (evB,t)<-newEventWithWatchdogs $! watchdogs evA
+        (evB,t)<-newEvent
+        evB `shouldAlsoKeepAlive` evA
         let loop s = Listener $ \a -> do
                     let (!b,!s') = f a s
                     trigger t $! b
@@ -319,11 +320,18 @@ mapAccumEvent !s0 !f !evA = do
 union :: Event (Event a) -> IO (Event a)
 union !evev = do
     wd<-spawnWatchdog
-    (!ev_,!t)<-newEventWithWatchdogs $! pure wd <> watchdogs evev
-
+    (!ev_,!t)<-newEvent
+    ev_ `shouldAlsoKeepAlive` wd
+    ev_ `shouldAlsoKeepAlive` evev
+    needsWashRef<-newIORef False
     let attachInner !e = do
-            wd $~ (watchdogs e <>)
+            wd `shouldAlsoKeepAlive` e
             onEventWhile e $ trigger t
+            -- because inners could be killed externally ...
+            traverse_ (\w -> onCleanup (leash w) (writeIORef needsWashRef True) ) $ watchdogs e
+            needsWash <- atomicModifyIORef' needsWashRef (False,)
+            -- ... we need to gc the watchdog references
+            when needsWash $ washWatchdog wd
             return True
 
     onEventWhile evev attachInner
@@ -333,37 +341,48 @@ union !evev = do
 
 -- | switch needs to run in IO: switch depends on the history of outer events that select the inner events, so we need to know when it was started.
 switch :: Event (Event a) -> IO (Event a)
-switch !evev = do
-    wd<-spawnWatchdog
-    (!ev_,!t)<-newEventWithWatchdogs $! pure wd <> watchdogs evev
+switch !event_of_events = do
+    (!result_event,!t)<-newEvent
+    result_event `shouldAlsoKeepAlive` event_of_events
+    wd <- spawnWatchdog
+    result_event `shouldAlsoKeepAlive` wd
     unregisterRef <- newIORef $ return ()
 
     (!tbs,!tbr)<-createTeleBox :: IO (TeleBoxSender a,TeleBoxReceiver a)
 
     let outer = Listener $ \ev -> do
-                    b<-isAlive t
+                    b <- isAlive t
                     if b
                     then do
                         wd `protectsOnly` ev
-                        !u'<-registerOnEvent ev tbs
-                        unregister<-atomicModifyIORef unregisterRef (\u->(u',u))
+                        !u' <- registerOnEvent ev tbs
+                        unregister <- atomicModifyIORef unregisterRef (\u->(u',u))
                         unregister
+                        return $ Just outer
                     else do
                         wd `protectsOnly` ()
                         let !u' = return ()
-                        unregister<-atomicModifyIORef unregisterRef (\u->(u',u))
+                        unregister <- atomicModifyIORef unregisterRef (\u->(u',u))
                         unregister
-                    return $! guard b >> Just outer
-    unregOuter<-listenOnEvent evev outer
+                        return Nothing
+    unregOuter <- listenOnEvent event_of_events outer
 
-    let inner = Listener $ \a->do
-                    b<-trigger t a
-                    when (not b) unregOuter
-                    return $! guard b >> Just inner
+    let inner = Listener $ \a -> do
+                    b <- trigger t a
+                    if b
+                    then do
+                        return $ Just inner
+                    else do
+                        unregOuter
+                        return Nothing
     listenOnSendBox tbr Just inner
 
-    return ev_
+    return result_event
 
+
+-- | same as `Watchdog.keepsAlive`
+shouldAlsoKeepAlive :: (KeepAlive event_a, KeepAlive event_b) => event_a -> event_b -> IO ()
+shouldAlsoKeepAlive = keepsAlive
 
 ------
 

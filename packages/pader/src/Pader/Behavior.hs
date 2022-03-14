@@ -21,7 +21,6 @@ import Control.Monad (join)
 import Data.Either (fromRight)
 import Data.IORef (atomicModifyIORef, mkWeakIORef, newIORef, readIORef, writeIORef)
 import Data.IORef.Extra (atomicModifyIORef_)
-import Data.StateVar (($=))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Mem.Weak (deRefWeak)
 
@@ -66,7 +65,8 @@ attach = attachWith (,)
 
 attachWith :: (b->a->c) -> Behavior b -> Event a -> Event c
 attachWith !f !bb !ea = unsafePerformIO $! do
-    (!eb,!tb)<-newEventWithWatchdogs (watchdogs ea)
+    (!eb,!tb)<-newEvent
+    eb `shouldAlsoKeepAlive` ea
     onEventWhile ea $ \ !a -> do
         !b<-sample bb
         trigger tb $! f b a
@@ -102,9 +102,10 @@ instance Accumulative Dynamic where
     accum b0 f ev = do
         !updated0<-accum b0 f ev
         !r<-newIORef b0
-        (!updated,!t) <- newEventWithWatchdogs $ watchdogs updated0
+        (!updated,!t) <- newEvent
+        updated `shouldAlsoKeepAlive` updated0
         !curWD <- spawnWatchdog
-        curWD $= watchdogs updated
+        curWD `shouldAlsoKeepAlive` updated
         !w <- mkWeakIORef r $ kill curWD
         _ <- onEventWhile updated0 $ \ !b -> do
             !ok1<-trigger t b
