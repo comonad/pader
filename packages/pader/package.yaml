@@ -1,0 +1,36 @@
+# see documentation for package.yaml syntax at https://github.com/sol/hpack
+
+name:                pader
+version:             0.1.0.0
+# synopsis:
+# description:
+license:             BSD3
+license-file:        LICENSE
+author:              Marc A. Ziegert
+copyright:           comonad@gmail.com
+maintainer:          comonad@gmail.com
+category:            FRP
+#extra-source-files:  ChangeLog.md
+
+#ghc-options: -O2 -threaded -with-rtsopts=-N2 -Wno-partial-type-signatures
+
+dependencies:
+  - base >= 4.13 && < 5
+
+library:
+  source-dirs: src
+  dependencies:
+      - containers >= 0.5.7.1
+      - transformers >= 0.5.6.2
+      - extra >= 1.7.8
+      - StateVar >= 1.2.1
+      - time >= 1.9.3
+      - split-channel >= 0.2.0.1
+
+#executables:
+#  myHelloWorld:
+#    dependencies:
+#      - pader
+#    source-dirs: app
+#    main:        Main.hs
+

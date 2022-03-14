@@ -1,0 +1,15 @@
+dist/
+.idea/
+*.iml
+.stack-work/
+dist-newstyle/
+.history/
+.vscode/
+.haddock
+
+*.storable
+*.storable.lz4
+*.lz4
+*.lz4table
+/out/
+.run/
