@@ -7,13 +7,13 @@ packages:
 - completed:
     hackage: split-channel-0.2.0.1@sha256:44d5bec55c6b2d4d1638f9d00529607b2b12919b8ff29dde73e5f521fa0c4cd2,1710
     pantry-tree:
-      size: 468
       sha256: 5e9dd49f56c2d32fc74d53316a4fcafed1d558fc7f2a3c9e982a3b6dc7a8dad2
+      size: 468
   original:
-    hackage: split-channel-0.2.0.1@sha256:44d5bec55c6b2d4d1638f9d00529607b2b12919b8ff29dde73e5f521fa0c4cd2,1710
+    hackage: split-channel-0.2.0.1
 snapshots:
 - completed:
-    size: 586268
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/13.yaml
-    sha256: d9e658a22cfe8d87a64fdf219885f942fef5fe2bcb156a9800174911c5da2443
-  original: lts-18.13
+    sha256: 9fa4bece7acfac1fc7930c5d6e24606004b09e80aa0e52e9f68b148201008db9
+    size: 649606
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/20/18.yaml
+  original: lts-20.18

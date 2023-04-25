@@ -19,7 +19,8 @@
 # resolver: https://example.com/snapshots/2018-01-01.yaml
 
 ## see https://www.stackage.org/lts
-resolver: lts-18.13
+resolver: lts-20.18
+#resolver: lts-18.13
 #resolver: lts-16.31
 
 #  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/20.yaml
@@ -49,7 +50,8 @@ extra-deps:
 #- ghc-exactprint-0.6.3.3@sha256:384e1066c192ed60dc12443b7aca75a4a4adcc47f829336c21ed007596fe683f,9446
 #- protolude-0.3.0@sha256:8361b811b420585b122a7ba715aa5923834db6e8c36309bf267df2dbf66b95ef,2693
 #- lz4-0.2.3.1@sha256:9d286f1c8e3e3aab86ebb8cd39b485af57c0a05d9da5baf921641012a3c83cf0,1821
-- split-channel-0.2.0.1@sha256:44d5bec55c6b2d4d1638f9d00529607b2b12919b8ff29dde73e5f521fa0c4cd2,1710
+- split-channel-0.2.0.1
+#- split-channel-0.2.0.1@sha256:44d5bec55c6b2d4d1638f9d00529607b2b12919b8ff29dde73e5f521fa0c4cd2,1710
 #- pretty-simple-4.0.0.0@sha256:a65be4ef40734eae1da7a88c9b73dbf1848f5a60b634dc4776fae60cafc85386,4071
 #- prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
 #- file-embed-0.0.13.0@sha256:a819e90b91cab919ffef5895ab6e1b2a44eac395a585f489b0c289a4a12d1c54,1396
