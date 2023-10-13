@@ -13,7 +13,7 @@ packages:
     hackage: split-channel-0.2.0.1
 snapshots:
 - completed:
-    sha256: 9fa4bece7acfac1fc7930c5d6e24606004b09e80aa0e52e9f68b148201008db9
-    size: 649606
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/20/18.yaml
-  original: lts-20.18
+    sha256: 350737ef1c4c748f4c7ff56b6e74f2f6d15039a2f148662a8ec1aded016b80d0
+    size: 640033
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/21/15.yaml
+  original: lts-21.15
